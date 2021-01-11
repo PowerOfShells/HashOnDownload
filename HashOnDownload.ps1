@@ -187,7 +187,7 @@ try {
             $hashSHA1 = Get-FileHash -Path $path -Algorithm SHA1
             $hashSHA256 = Get-FileHash -Path $path -Algorithm SHA256
 
-            Write-Log -Message " MD5: $($hashMD5.hash) `n`r SHA1: $($hashSHA1.hash) `n`r SHA256: $($hashSHA256.hash)" -Level Info
+            Write-Log -Message "MD5: $($hashMD5.hash), SHA1: $($hashSHA1.hash), SHA256: $($hashSHA256.hash)" -Level Info
 
             ### Displaying Toast
             # Load needed assemblies
