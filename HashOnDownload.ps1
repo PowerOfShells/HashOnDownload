@@ -139,10 +139,6 @@ function Write-Log {
 
 #Endregion Config
 
-
-$logpath = "D:\Filewatcher.log"
-
-
 $AppID = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
 
 # Assemblies
@@ -150,109 +146,113 @@ $Load = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notificat
 $Load = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
 
 
+try {
 
+    ### Folder to monitor
+    # Create .Net filewatcher 
+    $folder_filewatcher = New-Object System.IO.FileSystemWatcher
+    # Which path to monitor and what
+    $folder_filewatcher.Path =  "C:\Users\StarkeP\Downloads"
+    $folder_filewatcher.Filter = "*.*"
+    # Include subdirs and enable event generation
+    $folder_filewatcher.IncludeSubdirectories = $true
+    $folder_filewatcher.EnableRaisingEvents = $true
 
-### Folder to monitor
-# Create .Net filewatcher 
-$folder_filewatcher = New-Object System.IO.FileSystemWatcher
-# Which path to monitor and what
-$folder_filewatcher.Path =  "C:\Users\StarkeP\Downloads"
-$folder_filewatcher.Filter = "*.*"
-# Include subdirs and enable event generation
-$folder_filewatcher.IncludeSubdirectories = $true
-$folder_filewatcher.EnableRaisingEvents = $true
+    # Define writeaction for folder with builtin var $Event which will be filled with every event 
+    $folder_writeaction = { 
 
+        # Extract full path from $event
+        $path = $Event.SourceEventArgs.FullPath
 
-
-# Define writeaction for folder with builtin var $Event which will be filled with every event 
-
-$folder_writeaction = { 
-
-    # Extract full path from $event
-    $path = $Event.SourceEventArgs.FullPath
-
-    #ignore firefox files (.part) for hash creation
-    if ($path -like "*.part") {
-    }
-    
-    else {
-
-        # Extract change type
-        $changeType = $Event.SourceEventArgs.ChangeType
-
-        # Write to log
-        Write-Log -message "$changeType, $path" -Level Info
-        Write-Log -message "New File spotted, calculating hashes ..." -Level Info
-
-        # Check if file is fully downloaded and if file exists so it does not run infinite when file is moved / deleted for whatever reasons
-        while ((get-item $path).length -eq 0 -and (Test-path -Path $path)) {
-            Write-Log -Message "File not fully loaded, waiting for file to finish" -Level Info
-            Start-Sleep 5
+        #ignore firefox files (.part) for hash creation
+        if ($path -like "*.part") {
         }
+        
+        else {
+            # Extract change type
+            $changeType = $Event.SourceEventArgs.ChangeType
 
-        # Calculate hashes and log them
-        $hashMD5 = Get-FileHash -Path $path -Algorithm MD5
-        $hashSHA1 = Get-FileHash -Path $path -Algorithm SHA1
-        $hashSHA256 = Get-FileHash -Path $path -Algorithm SHA256
+            # Write to log
+            Write-Log -message "$changeType, $path" -Level Info
+            Write-Log -message "New File spotted, calculating hashes ..." -Level Info
 
-        Write-Log -Message " MD5: $($hashMD5.hash) `n`r SHA1: $($hashSHA1) `n`r SHA256: $($hashSHA256)" -Level Info
+            # Check if file is fully downloaded and if file exists so it does not run infinite when file is moved / deleted for whatever reasons
+            while ((get-item $path).length -eq 0 -and (Test-path -Path $path)) {
+                Write-Log -Message "File not fully loaded, waiting for file to finish" -Level Info
+                Start-Sleep 5
+            }
 
-        # Displaying Toast
+            # Calculate hashes and log them
+            $hashMD5 = Get-FileHash -Path $path -Algorithm MD5
+            $hashSHA1 = Get-FileHash -Path $path -Algorithm SHA1
+            $hashSHA256 = Get-FileHash -Path $path -Algorithm SHA256
 
-        $Load = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
-        $Load = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
-    
-        # Load the notification into the required format
+            Write-Log -Message " MD5: $($hashMD5.hash) `n`r SHA1: $($hashSHA1.hash) `n`r SHA256: $($hashSHA256.hash)" -Level Info
 
-        $ToastXml = New-Object -TypeName Windows.Data.Xml.Dom.XmlDocument
-        $ToastXml.LoadXml($Toast.OuterXml)
+            ### Displaying Toast
+            # Load needed assemblies
+            $Load = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
+            $Load = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
 
-        # Xml for toast
-        [xml]$Toast = @"
-        <toast scenario="reminder">
-            <visual>
-            <binding template="ToastGeneric">
-                <text placement="attribution">pascalstarke.de</text>
-                <text>Hash from file</text>
-                <group>
-                    <subgroup>
-                        <text hint-style="title" hint-wrap="true" >$path</text>
-                    </subgroup>
-                </group>
-                <group>
-                    <subgroup>     
-                        <text hint-style="body" hint-wrap="true" >MD5: $($hashMD5.hash)</text>
-                    </subgroup>
-                </group>
-                <group>
-                    <subgroup>     
-                        <text hint-style="body" hint-wrap="true" >SHA1: $hashSHA1</text>
-                    </subgroup>
-                </group>
-                <group>
-                    <subgroup>     
-                        <text hint-style="body" hint-wrap="true" >SHA256: $hashSHA256</text>
-                    </subgroup>
-                </group>
-            </binding>
-            </visual>
-            <actions>
-                <action activationType="system" arguments="dismiss" content="Dismiss"/>
-            </actions>
-        </toast>
+            # Xml for toast
+            [xml]$Toast = @"
+            <toast scenario="reminder">
+                <visual>
+                <binding template="ToastGeneric">
+                    <text>Hash from file</text>
+                    <group>
+                        <subgroup>
+                            <text hint-style="title" hint-wrap="true" >$path</text>
+                        </subgroup>
+                    </group>
+                    <group>
+                        <subgroup>     
+                            <text hint-style="body" hint-wrap="true" >MD5: $($hashMD5.hash)</text>
+                        </subgroup>
+                    </group>
+                    <group>
+                        <subgroup>     
+                            <text hint-style="body" hint-wrap="true" >SHA1: $($hashSHA1.hash)</text>
+                        </subgroup>
+                    </group>
+                    <group>
+                        <subgroup>     
+                            <text hint-style="body" hint-wrap="true" >SHA256: $($hashSHA256.hash)</text>
+                        </subgroup>
+                    </group>
+                </binding>
+                </visual>
+                <actions>
+                    <action activationType="system" arguments="dismiss" content="Dismiss"/>
+                </actions>
+            </toast>
 "@
+            # Load the notification into the required format
+            $ToastXml = New-Object -TypeName Windows.Data.Xml.Dom.XmlDocument
+            $ToastXml.LoadXml($Toast.OuterXml)
 
+            # Display toast
+            [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($AppID).Show($ToastXml)
 
-        # Display toast
-        [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($AppID).Show($ToastXml)
+        
+            }#End else$
+        }#End Writeaction
 
-    
-        }#End else$
-    }#End Writeaction
+    # Register the create event which will be logged
+    $objectEventID =  Register-ObjectEvent $folder_filewatcher "Created" -Action $folder_writeaction
+    Write-Log -Message "Object event created, Filewatcher started. ID: $($objecteventid.Name)"
+    # Check every 5 Seconds
+    while ($true) {Start-Sleep 5}
 
-# Register the create event which will be logged
+}# End try
+catch {
+    #Display Error
+    Write-Log -Message $_ -Level Error -Verbose
 
-Register-ObjectEvent $folder_filewatcher "Created" -Action $folder_writeaction
+}# End catch
+finally{
+    #When the process is killed, unregister the eventsubsciber
 
-# Check every 5 Seconds
-while ($true) {Start-Sleep 5}
+     Unregister-Event $objectEventID
+     Write-Log -Message "Object event unregistred. Daemon stopped."
+}
