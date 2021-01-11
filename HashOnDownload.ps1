@@ -7,7 +7,7 @@
     If  toastmessages are disabled, it will try to active them (Thanks @PeterEgerton)
     It'll set up a task to start itself via the taskscheduler on logon. 
     To disable the autorun use -Disable
-    To "deinstall" the daemon use -Delete
+    To "uninstall" the daemon use -Delete
     To stop the running daemon use -Stop
 
 .PARAMETER Disable
@@ -129,38 +129,39 @@ function Write-Log {
     {
     }
 }
+# Create file watcher function
+function New-FileWatcher {
 
+    [CmdletBinding()]
+    param (
+        # Which path to watch
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $PathToWatch = "$($env:USERPROFILE)\Downloads",
 
+        # Filter to ex- or include files
+        [string]
+        $Filter = "*.*",
 
-#Endregion Functions
-
-##########################
-#Region Load Config and check if toasts are enabled, if not, enable them
-
-#Endregion Config
-
-$AppID = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
-
-# Assemblies
-$Load = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
-$Load = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
-
-
-try {
+        # Include subdirs (recursive)
+        [bool]
+        $includeSubDirs = $true
+    )
 
     ### Folder to monitor
     # Create .Net filewatcher 
     $folder_filewatcher = New-Object System.IO.FileSystemWatcher
     # Which path to monitor and what
-    $folder_filewatcher.Path =  "C:\Users\StarkeP\Downloads"
-    $folder_filewatcher.Filter = "*.*"
+    $folder_filewatcher.Path =  $PathToWatch
+    $folder_filewatcher.Filter = $Filter
     # Include subdirs and enable event generation
-    $folder_filewatcher.IncludeSubdirectories = $true
+    $folder_filewatcher.IncludeSubdirectories = $includeSubDirs
     $folder_filewatcher.EnableRaisingEvents = $true
 
-    # Define writeaction for folder with builtin var $Event which will be filled with every event 
-    $folder_writeaction = { 
 
+    $folder_writeaction = { 
+        
         # Extract full path from $event
         $path = $Event.SourceEventArgs.FullPath
 
@@ -188,11 +189,13 @@ try {
             $hashSHA256 = Get-FileHash -Path $path -Algorithm SHA256
 
             Write-Log -Message "MD5: $($hashMD5.hash), SHA1: $($hashSHA1.hash), SHA256: $($hashSHA256.hash)" -Level Info
-
             ### Displaying Toast
             # Load needed assemblies
             $Load = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
             $Load = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
+
+            # App which pushes the toast; windows needs this to display the toast message
+            $AppID = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
 
             # Xml for toast
             [xml]$Toast = @"
@@ -239,8 +242,144 @@ try {
         }#End Writeaction
 
     # Register the create event which will be logged
+
+    
     $objectEventID =  Register-ObjectEvent $folder_filewatcher "Created" -Action $folder_writeaction
-    Write-Log -Message "Object event created, Filewatcher started. ID: $($objecteventid.Name)"
+    Write-Log -Message "Object event created, Filewatcher started. ID: $($objectEventId.Name)"
+    $objectEventID
+
+}# End function new-Filewatcher
+
+#Endregion Functions
+
+##########################
+#Region Load Config and check if toasts are enabled, if not, enable them
+
+# Getting executing directory
+$global:ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
+
+if (-NOT($Config)) {
+    Write-Log -Message "No config file set as parameter. Using local config file"
+    $Config = Join-Path ($global:ScriptPath) "config.xml"
+}
+
+# Load config.xml
+if (Test-Path $Config) {
+    try { 
+        $Xml = [xml](Get-Content -Path $Config -Encoding UTF8)
+        Write-Log -Message "Successfully loaded $Config" 
+    }
+    catch {
+        $ErrorMessage = $_.Exception.Message
+        Write-Log -Message "Error, could not read $Config"
+        Write-Log -Message "Error message: $ErrorMessage"
+        Exit 1
+    }
+}
+else {
+    Write-Log -Message "Error, could not find or access $Config"
+    Exit 1
+}
+
+# Load xml content into variables
+
+try {
+    Write-Log -Message "Loading xml content from $Config into variables"
+
+    $defaultDownloadOverride = $xml.configuration.option.defaultdownloadoverride 
+    $multipleFolderWatch = $xml.configuration.option.MultipleFolderWatch
+    $logpath = $xml.configuration.WatcherLog.path
+    $FolderToWatchPath = $xml.configuration.foldertowatch.path
+    $FolderToWatchFilter = $xml.configuration.FolderToWatch.filter
+    $FolderToWatchIncludeSubDirs = $xml.configuration.FolderToWatch.IncludeSubDirs
+    
+
+    Write-Log -Message "Successfully loaded xml content from $Config"     
+}
+catch {
+    Write-Log -Message "Xml content from $Config was not loaded properly"
+    Exit 1
+}
+
+# Check if more than one path will be watched 
+
+
+if ($defaultDownloadOverride -eq $true -AND $FolderToWatchPath.count -gt 3) { # See below why greater than 3.
+<# 
+You might ask yourself why greater than 3. 
+Well thats because all "FolderToWatch" attributes are counted in the $xml.configuration.foldertowatch.path array, even though we just requested the number of childs in path.
+Filter and IncludeSubDirs are counted too and added to the array, but empty. So even if we just supplied one path through the xml, $xml.configuration.foldertowatch.path.count returns 3. Neat!
+So 3 basically just means one set of FolderToWatch attributes. Everything greater than 3 means more folders need to be watched.
+#>
+
+    # Get number of paths to watch
+    [int]$folderToWatchCount = $FolderToWatchPath.count / 3
+
+    # Clear arrays
+    $paths, $filters, $includeSubDirs = $null
+
+
+    # Clear empty entries from path array
+    foreach ($path in $FolderToWatchPath) {
+        # Check if path is empty
+        if ($path -eq $null) {
+            # Do Nothing
+        }
+        # Else add it to paths
+        else {
+            [array]$paths+=$path
+        }
+    }# End foreach path
+
+    # Clear empty entries from filter array
+    foreach ($filter in $FolderToWatchFilter) {
+                # Check if filter is empty
+                if ($filter -eq $null) {
+                    # Do Nothing
+                }
+                # Else add it to paths
+                else {
+                    [array]$filters+=$filter
+                }
+        }# End foreach filter
+
+    # Clear empty entries from array
+    foreach ($subdirSwitch in $FolderToWatchIncludeSubDirs) {
+
+        # Check if filter is empty
+        if ($subdirSwitch -eq $null) {
+            # Do Nothing
+        }
+        # Else add it to paths
+        else {
+            [array]$includeSubDirs+=$subdirSwitch
+        }
+
+    }# End foreach subdir
+
+    $foldersHashtable = @{
+        Path = $paths
+        Filter = $filters
+        IncludeSubdirs = $subdirSwtich
+    }
+}
+
+#Endregion Config
+
+try {
+    for ($i = 0; $i -lt $folderToWatchCount; $i++) {
+
+        [array]$objectEventID =  New-FileWatcher -PathToWatch $foldersHashtable.Path[$i] -Filter $foldersHashtable.Filter[$i] -includeSubDirs $foldersHashtable.IncludeSubdirs[$i]
+
+    }
+
+    # Register event for exiting the process and unregister the event subscribers
+    Register-EngineEvent PowerShell.Exiting -Action {
+        foreach ($sub in $objectEventID) {
+            Unregister-Event $sub
+        }
+    }
+
     # Check every 5 Seconds
     while ($true) {Start-Sleep 5}
 
@@ -251,8 +390,8 @@ catch {
 
 }# End catch
 finally{
-    #When the process is killed, unregister the eventsubsciber
-
+    #Unregister eventsubscriber after error
      Unregister-Event $objectEventID
-     Write-Log -Message "Object event unregistred. Daemon stopped."
+     Write-Log -Message "Object event unregistered. Daemon stopped."
+     Exit 1
 }
