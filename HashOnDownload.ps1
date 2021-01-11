@@ -303,17 +303,16 @@ catch {
 
 # Check if more than one path will be watched 
 
-
-if ($defaultDownloadOverride -eq $true -AND $FolderToWatchPath.count -gt 3) { # See below why greater than 3.
-<# 
-You might ask yourself why greater than 3. 
-Well thats because all "FolderToWatch" attributes are counted in the $xml.configuration.foldertowatch.path array, even though we just requested the number of childs in path.
-Filter and IncludeSubDirs are counted too and added to the array, but empty. So even if we just supplied one path through the xml, $xml.configuration.foldertowatch.path.count returns 3. Neat!
-So 3 basically just means one set of FolderToWatch attributes. Everything greater than 3 means more folders need to be watched.
-#>
-
     # Get number of paths to watch
     [int]$folderToWatchCount = $FolderToWatchPath.count / 3
+
+    <# 
+    You might ask yourself why we divide by 3. 
+    Well thats because all "FolderToWatch" attributes are counted in the $xml.configuration.foldertowatch.path array, even though we just requested the number of childs in path.
+    Filter and IncludeSubDirs are counted too and added to the array, but empty. So even if we just supplied one path through the xml, $xml.configuration.foldertowatch.path.count returns 3. Neat!
+    So 3 basically just means one set of FolderToWatch attributes. Everything greater than 3 means more folders need to be watched.
+    #>
+
 
     # Clear arrays
     $paths, $filters, $includeSubDirs = $null
@@ -337,47 +336,43 @@ So 3 basically just means one set of FolderToWatch attributes. Everything greate
                 if ($filter -eq $null) {
                     # Do Nothing
                 }
-                # Else add it to paths
+                # Else add it to filters
                 else {
                     [array]$filters+=$filter
                 }
         }# End foreach filter
 
-    # Clear empty entries from array
+    # Clear empty entries from includeSubdirs array
     foreach ($subdirSwitch in $FolderToWatchIncludeSubDirs) {
 
         # Check if filter is empty
         if ($subdirSwitch -eq $null) {
             # Do Nothing
         }
-        # Else add it to paths
+        # Else add it to includeSubdirs
         else {
-            [array]$includeSubDirs+=$subdirSwitch
+            # Convert from string to bool
+            $subdirSwitchBol =  [System.Convert]::ToBoolean($subdirswitch)
+            [array]$includeSubDirs+=$subdirSwitchBol
         }
 
     }# End foreach subdir
 
+    #Create Hashtable and store cleaned arrays in it
     $foldersHashtable = @{
         Path = $paths
         Filter = $filters
-        IncludeSubdirs = $subdirSwtich
+        IncludeSubdirs = $includeSubDirs
     }
-}
 
 #Endregion Config
 
+# Create file watchers based on config.xml
 try {
     for ($i = 0; $i -lt $folderToWatchCount; $i++) {
 
         [array]$objectEventID =  New-FileWatcher -PathToWatch $foldersHashtable.Path[$i] -Filter $foldersHashtable.Filter[$i] -includeSubDirs $foldersHashtable.IncludeSubdirs[$i]
 
-    }
-
-    # Register event for exiting the process and unregister the event subscribers
-    Register-EngineEvent PowerShell.Exiting -Action {
-        foreach ($sub in $objectEventID) {
-            Unregister-Event $sub
-        }
     }
 
     # Check every 5 Seconds
@@ -391,7 +386,8 @@ catch {
 }# End catch
 finally{
     #Unregister eventsubscriber after error
-     Unregister-Event $objectEventID
+     Unregister-Event -SourceIdentifier $objectEventID.Name
      Write-Log -Message "Object event unregistered. Daemon stopped."
      Exit 1
-}
+}# End finally
+#NOTE: If you are running the deamon from the console, be sure to kill all the jobs with "Get-EventSubscriber | unregister-event"
