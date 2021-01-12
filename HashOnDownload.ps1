@@ -10,6 +10,9 @@
     To "uninstall" the daemon use -Delete
     To stop the running daemon use -Stop
 
+.PARAMETER Config
+    Path to config.xml
+
 .PARAMETER Disable
     Disables the HashOnDownload run on logon task in taskscheduler
 
@@ -41,6 +44,9 @@
 
 [CmdletBinding()]
 param(
+    [Parameter(HelpMessage="Path to the config.xml")]
+    [Switch]$Config,
+
     [Parameter(HelpMessage="Disables the HashOnDownload run on logon task in taskscheduler")]
     [Switch]$Disable,
 
@@ -128,7 +134,8 @@ function Write-Log {
     End
     {
     }
-}
+}# End function Write-Log
+
 # Create file watcher function
 function New-FileWatcher {
 
@@ -251,11 +258,37 @@ function New-FileWatcher {
     Write-Log -Message "Object event created, Filewatcher started. ID: $($objectEventId.Name)"
     $objectEventID
 
-}# End function new-Filewatcher
+}# End function New-Filewatcher
+
+# Create Windows Push Notification function.
+# This is testing if toast notifications generally are disabled within Windows 10
+function Test-WindowsPushNotificationsEnabled {
+    $ToastEnabledKey = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications" -Name ToastEnabled -ErrorAction Ignore).ToastEnabled
+    if ($ToastEnabledKey -eq "1") {
+        Write-Log -Message "Toast notifications are enabled in Windows"
+    }
+    elseif ($ToastEnabledKey -eq "0") {
+        Write-Log -Message "Toast notifications are not enabled in Windows. Enabling ..."
+        try {
+            Set-ItemProperty -path "HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications" -Name ToastEnabled -Value 1
+            Write-Log -Message "Toast notifications enabled."
+        }
+        catch {
+            Write-Log -Message "Could not enable Toast notifications. Please check your registry / permissions."
+        }
+    }
+    else {
+        Write-Log -Message "The registry key for determining if toast notifications are enabled does not exist. The script will run, but toasts might not be displayed"
+    }
+}
 
 #Endregion Functions
 ##########################
 #Region Load Config and check if toasts are enabled, if not, enable them
+
+#Test toast notifications
+
+Test-WindowsPushNotificationsEnabled
 
 # Getting executing directory
 $global:ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
@@ -269,7 +302,7 @@ if (-NOT($Config)) {
 if (Test-Path $Config) {
     try { 
         $Xml = [xml](Get-Content -Path $Config -Encoding UTF8)
-        Write-Log -Message "Successfully loaded $Config" 
+        Write-Log -Message "Successfully loaded $Config"
     }
     catch {
         $ErrorMessage = $_.Exception.Message
@@ -303,79 +336,70 @@ catch {
     Exit 1
 }
 
-# Check if more than one path will be watched 
-
-    # Get number of paths to watch
-    [int]$folderToWatchCount = $FolderToWatchPath.count / 3
-
-    <# 
-    You might ask yourself why we divide by 3. 
-    Well thats because all "FolderToWatch" attributes are counted in the $xml.configuration.foldertowatch.path array, even though we just requested the number of childs in path.
-    Filter and IncludeSubDirs are counted too and added to the array, but empty. So even if we just supplied one path through the xml, $xml.configuration.foldertowatch.path.count returns 3. Neat!
-    So 3 basically just means one set of FolderToWatch attributes. Everything greater than 3 means more folders need to be watched.
-    #>
 
 
-    # Clear arrays
-    $paths, $filters, $includeSubDirs = $null
 
+# Get number of paths to watch
+[int]$folderToWatchCount = $FolderToWatchPath.count / 3
+<# 
+You might ask yourself why we divide by 3. 
+Well thats because all "FolderToWatch" attributes are counted in the $xml.configuration.foldertowatch.path array, even though we just requested the number of childs in path.
+Filter and IncludeSubDirs are counted too and added to the array, but empty. So even if we just supplied one path through the xml, $xml.configuration.foldertowatch.path.count returns 3. Neat!
+So 3 basically just means one set of FolderToWatch attributes. Everything greater than 3 means more folders need to be watched.
+#>
 
-    # Clear empty entries from path array
-    foreach ($path in $FolderToWatchPath) {
-        # If defaultDownloadOverride is false, use default path        
-        if (-NOT($defaultDownloadOverride)) {
-            [array]$paths = "$env:USERPROFILE\Downloads" 
-        }
-        # Else use path from config
-        else {
-                        # Check if path is empty
-            if ($path -eq $null) {
-                # Do Nothing
-            }
-            # Else add it to paths
-            else {
-                [array]$paths+=$path
-            }
-        }# End Else defaultDownloadOverride
-
-    }# End foreach path
-
-    # Clear empty entries from filter array
-    foreach ($filter in $FolderToWatchFilter) {
-                    
-                
-                # Check if filter is empty
-                if ($filter -eq $null) {
-                    # Do Nothing
-                }
-                # Else add it to filters
-                else {
-                    [array]$filters+=$filter
-                }
-        }# End foreach filter
-
-    # Clear empty entries from includeSubdirs array
-    foreach ($subdirSwitch in $FolderToWatchIncludeSubDirs) {
-
-        # Check if filter is empty
-        if ($subdirSwitch -eq $null) {
+# Clear arrays
+$paths, $filters, $includeSubDirs = $null
+# Clear empty entries from path array
+foreach ($path in $FolderToWatchPath) {
+    # If defaultDownloadOverride is false, use default path        
+    if (-NOT($defaultDownloadOverride)) {
+        [array]$paths = "$env:USERPROFILE\Downloads" 
+    }
+    # Else use path from config
+    else {
+                    # Check if path is empty
+        if ($path -eq $null) {
             # Do Nothing
         }
-        # Else add it to includeSubdirs
+        # Else add it to paths
         else {
-            # Convert from string to bool
-            $subdirSwitchBol =  [System.Convert]::ToBoolean($subdirswitch)
-            [array]$includeSubDirs+=$subdirSwitchBol
+            [array]$paths+=$path
         }
-
-    }# End foreach subdir
-
-        $foldersHashtable = @{
-            Path = $paths
-            Filter = $filters
-            IncludeSubdirs = $includeSubDirs
-        }
-        
+    }# End Else defaultDownloadOverride
+}# End foreach path
+# Clear empty entries from filter array
+foreach ($filter in $FolderToWatchFilter) {
+                
+            
+            # Check if filter is empty
+            if ($filter -eq $null) {
+                # Do Nothing
+            }
+            # Else add it to filters
+            else {
+                [array]$filters+=$filter
+            }
+    }# End foreach filter
+# Clear empty entries from includeSubdirs array
+foreach ($subdirSwitch in $FolderToWatchIncludeSubDirs) {
+    # Check if filter is empty
+    if ($subdirSwitch -eq $null) {
+        # Do Nothing
+    }
+    # Else add it to includeSubdirs
+    else {
+        # Convert from string to bool
+        $subdirSwitchBol =  [System.Convert]::ToBoolean($subdirswitch)
+        [array]$includeSubDirs+=$subdirSwitchBol
+    }
+}# End foreach subdir
+    $foldersHashtable = @{
+        Path = $paths
+        Filter = $filters
+        IncludeSubdirs = $includeSubDirs
+    }
+    
 #Create hashtable and store cleaned arrays in it
 
 
@@ -417,6 +441,4 @@ finally{
      
     
 }# End finally
-
-
 #NOTE: If you are running the deamon from the console, be sure to kill all the jobs with "Get-EventSubscriber | unregister-event"
