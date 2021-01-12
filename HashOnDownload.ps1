@@ -235,7 +235,10 @@ function New-FileWatcher {
             $ToastXml.LoadXml($Toast.OuterXml)
 
             # Display toast
+
             [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($AppID).Show($ToastXml)
+
+
 
         
             }#End else$
@@ -251,7 +254,6 @@ function New-FileWatcher {
 }# End function new-Filewatcher
 
 #Endregion Functions
-
 ##########################
 #Region Load Config and check if toasts are enabled, if not, enable them
 
@@ -286,12 +288,12 @@ else {
 try {
     Write-Log -Message "Loading xml content from $Config into variables"
 
-    $defaultDownloadOverride = $xml.configuration.option.defaultdownloadoverride 
-    $multipleFolderWatch = $xml.configuration.option.MultipleFolderWatch
+    $defaultDownloadOverride = [system.convert]::toboolean($xml.configuration.option.defaultdownloadoverride[0])
     $logpath = $xml.configuration.WatcherLog.path
     $FolderToWatchPath = $xml.configuration.foldertowatch.path
     $FolderToWatchFilter = $xml.configuration.FolderToWatch.filter
     $FolderToWatchIncludeSubDirs = $xml.configuration.FolderToWatch.IncludeSubDirs
+   
     
 
     Write-Log -Message "Successfully loaded xml content from $Config"     
@@ -320,18 +322,28 @@ catch {
 
     # Clear empty entries from path array
     foreach ($path in $FolderToWatchPath) {
-        # Check if path is empty
-        if ($path -eq $null) {
-            # Do Nothing
+        # If defaultDownloadOverride is false, use default path        
+        if (-NOT($defaultDownloadOverride)) {
+            [array]$paths = "$env:USERPROFILE\Downloads" 
         }
-        # Else add it to paths
+        # Else use path from config
         else {
-            [array]$paths+=$path
-        }
+                        # Check if path is empty
+            if ($path -eq $null) {
+                # Do Nothing
+            }
+            # Else add it to paths
+            else {
+                [array]$paths+=$path
+            }
+        }# End Else defaultDownloadOverride
+
     }# End foreach path
 
     # Clear empty entries from filter array
     foreach ($filter in $FolderToWatchFilter) {
+                    
+                
                 # Check if filter is empty
                 if ($filter -eq $null) {
                     # Do Nothing
@@ -358,12 +370,18 @@ catch {
 
     }# End foreach subdir
 
-    #Create Hashtable and store cleaned arrays in it
-    $foldersHashtable = @{
-        Path = $paths
-        Filter = $filters
-        IncludeSubdirs = $includeSubDirs
-    }
+        $foldersHashtable = @{
+            Path = $paths
+            Filter = $filters
+            IncludeSubdirs = $includeSubDirs
+        }
+        
+#Create hashtable and store cleaned arrays in it
+
+
+# If defaultDownloadOverride is not enabled
+
+    
 
 #Endregion Config
 
@@ -386,8 +404,19 @@ catch {
 }# End catch
 finally{
     #Unregister eventsubscriber after error
-     Unregister-Event -SourceIdentifier $objectEventID.Name
-     Write-Log -Message "Object event unregistered. Daemon stopped."
-     Exit 1
+    try {
+        Unregister-Event -SourceIdentifier $objectEventID.Name
+        Write-Log -Message "Object event unregistered. Daemon stopped."
+        Exit 1
+    }
+    catch {
+        Write-Log -Message "Object event unregistered. Daemon stopped."
+        Exit 1
+    }
+     
+     
+    
 }# End finally
+
+
 #NOTE: If you are running the deamon from the console, be sure to kill all the jobs with "Get-EventSubscriber | unregister-event"

@@ -2,13 +2,12 @@
 <Configuration>
 
     <Option DefaultDownloadOverride="False" /> <!-- Determines if the default download folder is used or if an alternative path is chosen-->
-    <Option MultipleFolderWatch="False"/> <!-- enables or diables if more than one folder is watched, additional folders can be listed infite as below -->
 
     <FolderToWatch Path="C:\users\powerofshells\downloads" /> <!-- path to alternative folder, is not used if DefaultDownloadOverride is false -->
     <FolderToWatch Filter="*.*" /> <!-- *.* watches everything -->
     <FolderToWatch IncludeSubDirs="True" /> <!--recursive monitoring enabled or disabled -->
 
-    <!--  if more than one folder needs to be watched, enable MultipleFolderWatch and just append the same 3 lines as needed from above: path, folder and includesubdirs, e.g.: -->
+    <!--  if more than one folder needs to be watched, just append the same 3 lines as needed from above: path, folder and includesubdirs, e.g.: -->
     <!--
         <FolderToWatch Path="C:\users\powerofshells\another_download_folder" /> 
         <FolderToWatch Filter="*.*" /> 
