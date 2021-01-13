@@ -5,19 +5,19 @@
 .DESCRIPTION
     The script will run within the user context.
     If  toastmessages are disabled, it will try to active them (Thanks @PeterEgerton)
-    It'll set up a task to start itself via the taskscheduler on logon. 
+    It'll set up a task to start itself via registry if not executed with -NoAutorun
+    Path to config via -Path, else local config.xml will be used.
     To disable the autorun use -Disable
-    To "uninstall" the daemon use -Delete
     To stop the running daemon use -Stop
 
 .PARAMETER Config
     Path to config.xml
 
-.PARAMETER Disable
-    Disables the HashOnDownload run on logon task in taskscheduler
+.PARAMETER DisableAutorun
+    Disables the autorun of daemon
 
-.PARAMETER Delete
-    Deletes the HashOnDownload task from the taskscheduler
+.PARAMETER EnableAutorun
+    Enables the autorun of daemon
 
 .PARAMETER Stop
     Stops the running daemon
@@ -26,7 +26,7 @@
     Filename: HashOnDownload.ps1
     Version: 1.0
     Author: Pascal Starke
-    Twitter: @PowerOfShells
+    Twitter: @kraeftigeSchale
 
     Contributor: Dominique Clijsters
     Twiter: @clijsters_dom
@@ -44,16 +44,16 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(HelpMessage="Path to the config.xml")]
+    [Parameter(HelpMessage = "Path to the config.xml")]
     [string]$Config,
 
-    [Parameter(HelpMessage="Disables the HashOnDownload run on logon task in taskscheduler")]
-    [Switch]$Disable,
+    [Parameter(HelpMessage = "Disables the autorun of daemon")]
+    [Switch]$DisableAutorun,
 
-    [Parameter(HelpMessage="Deletes the HashOnDownload task from the taskscheduler")]
-    [Switch]$Delete,
+    [Parameter(HelpMessage = "Enables the autorun of daemon")]
+    [Switch]$EnableAutorun,
 
-    [Parameter(HelpMessage="Stops the running daemon")]
+    [Parameter(HelpMessage = "Stops the running daemon")]
     [Switch]$Stop
 )
 
@@ -65,32 +65,30 @@ param(
 function Write-Log {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
         [ValidateNotNullOrEmpty()]
         [Alias("LogContent")]
         [string]$Message,
         
         # with your location for the local log file
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [Alias('LogPath')]
-        [string]$Path="$env:APPDATA\HashOnDownload\Filewatcher.log",
+        [string]$Path = "$env:APPDATA\HashOnDownload\Filewatcher.log",
 
-        [Parameter(Mandatory=$false)]
-        [ValidateSet("Error","Warn","Info")]
-        [string]$Level="Info"
+        [Parameter(Mandatory = $false)]
+        [ValidateSet("Error", "Warn", "Info")]
+        [string]$Level = "Info"
     )
 
-    Begin
-    {
+    Begin {
         # Set VerbosePreference to Continue so that verbose messages are displayed.
         $VerbosePreference = 'Continue'
     }
-    Process
-    {
-		if ((Test-Path $Path)) {
-			$LogSize = (Get-Item -Path $Path).Length/1MB
-			$MaxLogSize = 5
-		}
+    Process {
+        if ((Test-Path $Path)) {
+            $LogSize = (Get-Item -Path $Path).Length / 1MB
+            $MaxLogSize = 5
+        }
                 
         # Check for file size of the log. If greater than 5MB, it will create a new one and delete the old.
         if ((Test-Path $Path) -AND $LogSize -gt $MaxLogSize) {
@@ -103,11 +101,11 @@ function Write-Log {
         elseif (-NOT(Test-Path $Path)) {
             Write-Verbose "Creating $Path."
             $NewLogFile = New-Item $Path -Force -ItemType File
-            }
+        }
 
         else {
             # Nothing to see here yet.
-            }
+        }
 
         # Format Date for our Log File
         $FormattedDate = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -117,22 +115,21 @@ function Write-Log {
             'Error' {
                 Write-Error $Message
                 $LevelText = 'ERROR:'
-                }
+            }
             'Warn' {
                 Write-Warning $Message
                 $LevelText = 'WARNING:'
-                }
+            }
             'Info' {
                 Write-Verbose $Message
                 $LevelText = 'INFO:'
-                }
             }
+        }
         
         # Write log entry to $Path
         "$FormattedDate $LevelText $Message" | Out-File -FilePath $Path -Append
     }
-    End
-    {
+    End {
     }
 }# End function Write-Log
 
@@ -160,7 +157,7 @@ function New-FileWatcher {
     # Create .Net filewatcher 
     $folder_filewatcher = New-Object System.IO.FileSystemWatcher
     # Which path to monitor and what
-    $folder_filewatcher.Path =  $PathToWatch
+    $folder_filewatcher.Path = $PathToWatch
     $folder_filewatcher.Filter = $Filter
     # Include subdirs and enable event generation
     $folder_filewatcher.IncludeSubdirectories = $includeSubDirs
@@ -248,13 +245,13 @@ function New-FileWatcher {
 
 
         
-            }#End else$
-        }#End Writeaction
+        }#End else$
+    }#End Writeaction
 
     # Register the create event which will be logged
 
     
-    $objectEventID =  Register-ObjectEvent $folder_filewatcher "Created" -Action $folder_writeaction
+    $objectEventID = Register-ObjectEvent $folder_filewatcher "Created" -Action $folder_writeaction
     Write-Log -Message "Object event created, Filewatcher started. ID: $($objectEventId.Name)"
     $objectEventID
 
@@ -274,11 +271,11 @@ function Test-WindowsPushNotificationsEnabled {
             Write-Log -Message "Toast notifications enabled."
         }
         catch {
-            Write-Log -Message "Could not enable Toast notifications. Please check your registry / permissions."
+            Write-Log -Message "Could not enable Toast notifications. Please check your registry / permissions." -Level Warn
         }
     }
     else {
-        Write-Log -Message "The registry key for determining if toast notifications are enabled does not exist. The script will run, but toasts might not be displayed"
+        Write-Log -Message "The registry key for determining if toast notifications are enabled does not exist. The script will run, but toasts might not be displayed" -Level Warn
     }
 }
 
@@ -290,156 +287,209 @@ function Test-WindowsPushNotificationsEnabled {
 
 $null = Test-WindowsPushNotificationsEnabled
 
+
 # Getting executing directory
 $global:ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
+# DaemonParams
+$daemonParams = "'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -file $($scriptpath)\hashondownload.ps1 -noProfile -nonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden"
 
-if (-NOT($Config)) {
-    Write-Log -Message "No config file set as parameter. Using local config file"
-    $Config = Join-Path ($global:ScriptPath) "config.xml"
-}
+# If autorun should be disabled
+if ($DisableAutorun) {
+    Write-Log "Disable switch detected, daemon autorun will be disabled ..."
+    try {
+        $autrunEnabled = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name HashOnDownloadDaemon -ErrorAction Ignore).HashOnDownloadDaemon
 
-# Load config.xml
-if (Test-Path $Config) {
-    try { 
-        $Xml = [xml](Get-Content -Path $Config -Encoding UTF8)
-        Write-Log -Message "Successfully loaded $Config"
+        # if autorunEnabled is not empty
+        if ($autrunEnabled -ne $null) {
+            Remove-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name HashOnDownloadDaemon -Confirm:$false -ErrorAction Ignore
+            Write-Log "Success!"
+        }
+        else {
+            Write-Log "Autorun was not enabled in the first place"
+        }
+        
     }
     catch {
-        $ErrorMessage = $_.Exception.Message
-        Write-Log -Message "Error, could not read $Config"
-        Write-Log -Message "Error message: $ErrorMessage"
-        Exit 1
+        Write-Log "Error on disabling daemon:" -Level Error
+        Write-Log $_ -Level Error+
+    }
+
+}
+# If running HashOnDownload should be stopped
+elseif ($stop) {
+    Write-Log "Stop switch detected, stopping daemon ..."
+    # Get all powershell processes
+    $poshProcs = Get-WmiObject Win32_Process -Filter "name = 'powershell.exe'" | Select-Object name, commandline, processid
+    # Serach for daemon
+
+    foreach ($proc in $poshProcs) {
+        if ($proc.commandline -like "*HashOnDownload.ps1*") {
+            Stop-process -id $proc.processid
+            Write-Log "Success!"
+            $processKilled = $true
+        }
+    }
+    if(-NOT($processKilled)) {
+        Write-Log "Daemon was not running"
+    }
+
+}
+elseif ($EnableAutorun) {
+    Write-Log "Enable switch detected, daemon autorun will be enabled ..."
+    try {
+        New-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name HashOnDownloadDaemon -Value $daemonParams -PropertyType string
+        Write-Log "Success!"
+    }
+    catch {
+        Write-Log "Error on activating autorun. Try disabling the autorun first if you moved the file. Else check your permissions." -Level Error
+        Write-Log $_ -level Error
     }
 }
+# Else launch process
 else {
-    Write-Log -Message "Error, could not find or access $Config"
-    Exit 1
-}
 
-# Load xml content into variables
+    if (-NOT($Config)) {
+        Write-Log -Message "No config file set as parameter. Using local config file"
+        $Config = Join-Path ($global:ScriptPath) "config.xml"
+    }
 
-try {
-    Write-Log -Message "Loading xml content from $Config into variables"
+    # Load config.xml
+    if (Test-Path $Config) {
+        try { 
+            $Xml = [xml](Get-Content -Path $Config -Encoding UTF8)
+            Write-Log -Message "Successfully loaded $Config"
+        }
+        catch {
+            $ErrorMessage = $_.Exception.Message
+            Write-Log -Message "Error, could not read $Config"
+            Write-Log -Message "Error message: $ErrorMessage"
+            Exit 1
+        }
+    }
+    else {
+        Write-Log -Message "Error, could not find or access $Config"
+        Exit 1
+    }
 
-    $defaultDownloadOverride = [system.convert]::toboolean($xml.configuration.option.defaultdownloadoverride)
-    $logpath = $xml.configuration.WatcherLog.path
-    $FolderToWatchPath = $xml.configuration.foldertowatch.path
-    $FolderToWatchFilter = $xml.configuration.FolderToWatch.filter
-    $FolderToWatchIncludeSubDirs = $xml.configuration.FolderToWatch.IncludeSubDirs
+    # Load xml content into variables
+
+    try {
+        Write-Log -Message "Loading xml content from $Config into variables"
+
+        $defaultDownloadOverride = [system.convert]::toboolean($xml.configuration.option.defaultdownloadoverride)
+        #$logpath = $xml.configuration.WatcherLog.path
+        $FolderToWatchPath = $xml.configuration.foldertowatch.path
+        $FolderToWatchFilter = $xml.configuration.FolderToWatch.filter
+        $FolderToWatchIncludeSubDirs = $xml.configuration.FolderToWatch.IncludeSubDirs
    
     
 
-    Write-Log -Message "Successfully loaded xml content from $Config"     
-}
-catch {
-    Write-Log -Message "Xml content from $Config was not loaded properly"
-    Exit 1
-}
+        Write-Log -Message "Successfully loaded xml content from $Config"     
+    }
+    catch {
+        Write-Log -Message "Xml content from $Config was not loaded properly"
+        Exit 1
+    }
 
 
 
 
-# Get number of paths to watch
-[int]$folderToWatchCount = $FolderToWatchPath.count / 3
-<# 
+    # Get number of paths to watch
+    [int]$folderToWatchCount = $FolderToWatchPath.count / 3
+    <# 
 You might ask yourself why we divide by 3. 
 Well thats because all "FolderToWatch" attributes are counted in the $xml.configuration.foldertowatch.path array, even though we just requested the number of childs in path.
 Filter and IncludeSubDirs are counted too and added to the array, but empty. So even if we just supplied one path through the xml, $xml.configuration.foldertowatch.path.count returns 3. Neat!
 So 3 basically just means one set of FolderToWatch attributes. Everything greater than 3 means more folders need to be watched.
 #>
 
-# Clear arrays
-$paths, $filters, $includeSubDirs = $null
-# Clear empty entries from path array
-foreach ($path in $FolderToWatchPath) {
-    # If defaultDownloadOverride is false, use default path        
-    if (-NOT($defaultDownloadOverride)) {
-        [array]$paths = "$env:USERPROFILE\Downloads" 
-    }
-    # Else use path from config
-    else {
-                    # Check if path is empty
-        if ($path -eq $null) {
-            # Do Nothing
+    # Clear arrays
+    $paths, $filters, $includeSubDirs = $null
+    # Clear empty entries from path array
+    foreach ($path in $FolderToWatchPath) {
+        # If defaultDownloadOverride is false, use default path        
+        if (-NOT($defaultDownloadOverride)) {
+            [array]$paths = "$env:USERPROFILE\Downloads" 
         }
-        # Else add it to paths
+        # Else use path from config
         else {
-            [array]$paths+=$path
-        }
-    }# End Else defaultDownloadOverride
-}# End foreach path
-# Clear empty entries from filter array
-foreach ($filter in $FolderToWatchFilter) {
-                
-            
-            # Check if filter is empty
-            if ($filter -eq $null) {
+            # Check if path is empty
+            if ($path -eq $null) {
                 # Do Nothing
             }
-            # Else add it to filters
+            # Else add it to paths
             else {
-                [array]$filters+=$filter
+                [array]$paths += $path
             }
+        }# End Else defaultDownloadOverride
+    }# End foreach path
+    # Clear empty entries from filter array
+    foreach ($filter in $FolderToWatchFilter) {
+                
+            
+        # Check if filter is empty
+        if ($filter -eq $null) {
+            # Do Nothing
+        }
+        # Else add it to filters
+        else {
+            [array]$filters += $filter
+        }
     }# End foreach filter
-# Clear empty entries from includeSubdirs array
-foreach ($subdirSwitch in $FolderToWatchIncludeSubDirs) {
-    # Check if filter is empty
-    if ($subdirSwitch -eq $null) {
-        # Do Nothing
-    }
-    # Else add it to includeSubdirs
-    else {
-        # Convert from string to bool
-        $subdirSwitchBol =  [System.Convert]::ToBoolean($subdirswitch)
-        [array]$includeSubDirs+=$subdirSwitchBol
-    }
-}# End foreach subdir
+    # Clear empty entries from includeSubdirs array
+    foreach ($subdirSwitch in $FolderToWatchIncludeSubDirs) {
+        # Check if filter is empty
+        if ($subdirSwitch -eq $null) {
+            # Do Nothing
+        }
+        # Else add it to includeSubdirs
+        else {
+            # Convert from string to bool
+            $subdirSwitchBol = [System.Convert]::ToBoolean($subdirswitch)
+            [array]$includeSubDirs += $subdirSwitchBol
+        }
+    }# End foreach subdir
+    #Create hashtable and store cleaned arrays in it
+
     $foldersHashtable = @{
-        Path = $paths
-        Filter = $filters
+        Path           = $paths
+        Filter         = $filters
         IncludeSubdirs = $includeSubDirs
     }
     
-#Create hashtable and store cleaned arrays in it
+    #Endregion Config
 
-
-# If defaultDownloadOverride is not enabled
-
-    
-
-#Endregion Config
-
-# Create file watchers based on config.xml
-try {
-    for ($i = 0; $i -lt $folderToWatchCount; $i++) {
-
-        [array]$objectEventID =  New-FileWatcher -PathToWatch $foldersHashtable.Path[$i] -Filter $foldersHashtable.Filter[$i] -includeSubDirs $foldersHashtable.IncludeSubdirs[$i]
-
-    }
-
-    # Check every 5 Seconds
-    while ($true) {Start-Sleep 5}
-
-}# End try
-catch {
-    #Display Error
-    Write-Log -Message $_ -Level Error -Verbose
-
-}# End catch
-finally{
-    #Unregister eventsubscriber after error
+    # Create file watchers based on config.xml
     try {
-        Unregister-Event -SourceIdentifier $objectEventID.Name
-        Write-Log -Message "Object event unregistered. Daemon stopped."
-        Exit 1
-    }
+        Write-Log "Starting daemon ..."
+        for ($i = 0; $i -lt $folderToWatchCount; $i++) {
+
+            [array]$objectEventID = New-FileWatcher -PathToWatch $foldersHashtable.Path[$i] -Filter $foldersHashtable.Filter[$i] -includeSubDirs $foldersHashtable.IncludeSubdirs[$i]
+
+        }
+
+        # Check every 5 Seconds
+        while ($true) { Start-Sleep 5 }
+
+    }# End try
     catch {
-        Write-Log -Message "Object event unregistered. Daemon stopped."
-        Exit 1
-    }
-     
-     
-    
-}# End finally
+        #Display Error
+        Write-Log -Message $_ -Level Error -Verbose
+
+    }# End catch
+    finally {
+        #Unregister eventsubscriber after error
+        try {
+            Write-Log -Message "Stop event detected ..."
+            Unregister-Event -SourceIdentifier $objectEventID.Name
+            Write-Log -Message "Object event unregistered. Daemon stopped."
+            Exit 1
+        }
+        catch {
+            Write-Log -Message "Object event unregistered. Daemon stopped."
+            Exit 1
+        }
+    }# End finally
+}# End else disable / stop / noautorun
 #NOTE: If you are running the deamon from the console, be sure to kill all the jobs with "Get-EventSubscriber | unregister-event"

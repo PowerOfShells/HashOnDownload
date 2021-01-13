@@ -13,9 +13,4 @@
         <FolderToWatch Filter="*.*" /> 
         <FolderToWatch IncludeSubDirs="True" />
     -->
-
-    <!-- If nothing is supplied, it will choose the default path which is %appdata$\HashOnDownload\Filewatcher.log -->
-    <!--
-        <WatcherLog Path=""/>
-    -->
 </Configuration>
