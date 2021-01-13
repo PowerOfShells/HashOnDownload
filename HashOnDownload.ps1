@@ -45,7 +45,7 @@
 [CmdletBinding()]
 param(
     [Parameter(HelpMessage="Path to the config.xml")]
-    [Switch]$Config,
+    [string]$Config,
 
     [Parameter(HelpMessage="Disables the HashOnDownload run on logon task in taskscheduler")]
     [Switch]$Disable,
@@ -293,6 +293,7 @@ $null = Test-WindowsPushNotificationsEnabled
 # Getting executing directory
 $global:ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
+
 if (-NOT($Config)) {
     Write-Log -Message "No config file set as parameter. Using local config file"
     $Config = Join-Path ($global:ScriptPath) "config.xml"
@@ -321,7 +322,7 @@ else {
 try {
     Write-Log -Message "Loading xml content from $Config into variables"
 
-    $defaultDownloadOverride = [system.convert]::toboolean($xml.configuration.option.defaultdownloadoverride[0])
+    $defaultDownloadOverride = [system.convert]::toboolean($xml.configuration.option.defaultdownloadoverride)
     $logpath = $xml.configuration.WatcherLog.path
     $FolderToWatchPath = $xml.configuration.foldertowatch.path
     $FolderToWatchFilter = $xml.configuration.FolderToWatch.filter
