@@ -5,9 +5,9 @@
 .DESCRIPTION
     The script will run within the user context.
     If  toastmessages are disabled, it will try to active them (Thanks @PeterEgerton)
-    It'll set up a task to start itself via registry if not executed with -NoAutorun
-    Path to config via -Path, else local config.xml will be used.
-    To disable the autorun use -Disable
+    Path to config via -Path, else scriptpath local config.xml will be used.
+    To enable the autorun use -EnableAutorun
+    To disable the autorun use -DisableAutorun
     To stop the running daemon use -Stop
 
 .PARAMETER Config
@@ -39,7 +39,7 @@
     https://github.com/PowerOfShells/HashOnDownload
 #> 
 
-#Requires -version 5.1
+#Requires -version 5.1 -PSEdition Desktop
 #Requires #Requires -Assembly "Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, Windows.Data.Xml.Dom.XmlDocument"
 
 [CmdletBinding()]
@@ -330,7 +330,7 @@ elseif ($stop) {
             $processKilled = $true
         }
     }
-    if(-NOT($processKilled)) {
+    if (-NOT($processKilled)) {
         Write-Log "Daemon was not running"
     }
 
