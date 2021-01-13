@@ -292,7 +292,7 @@ $null = Test-WindowsPushNotificationsEnabled
 $global:ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
 # DaemonParams
-$daemonParams = "'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -file $($scriptpath)\hashondownload.ps1 -noProfile -nonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden"
+$daemonParams = "`"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`" -file $($scriptpath)\hashondownload.ps1 -noProfile -nonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden"
 
 # If autorun should be disabled
 if ($DisableAutorun) {
