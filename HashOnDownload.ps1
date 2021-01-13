@@ -288,7 +288,7 @@ function Test-WindowsPushNotificationsEnabled {
 
 #Test toast notifications
 
-Test-WindowsPushNotificationsEnabled
+$null = Test-WindowsPushNotificationsEnabled
 
 # Getting executing directory
 $global:ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
